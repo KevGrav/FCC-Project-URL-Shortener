@@ -5,66 +5,52 @@ const mongoose = require('mongoose');
 const shortId = require('shortid');
 const validUrl = require('valid-url');
 const app = express();
-
 // Basic Configuration
 const port = process.env.PORT || 3000;
-
 mongoose.connect(process.env.DB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
 });
-
 const urlSchema = new mongoose.Schema({
   original_url: String,
   short_url: String,
 });
-
-const UrlModel = mongoose.model('Url', urlSchema);
-
+const Url = mongoose.model('Url', urlSchema);
 app.use(cors());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(express.urlencoded({extended: true}));
-
-app.use('/public', express.static(`${process.cwd()}/public`));
-
-app.get('/', function(req, res) {
-  res.sendFile(process.cwd() + '/views/index.html');
-});
-
-app.post('/api/shorturl', async(req, res) => {
-  const {url} = req.body.url; // Assuming the url is sent in the body under "url"
+app.post('/api/shorturl', async (req, res) => {
+  const { url } = req.body;
   const urlCode = shortId.generate();
-
-  if(!validUrl.isUri(url)) {
-    return res.status(401).json({error: 'invalid URL'});
+  if (!validUrl.isWebUri(url)) { // Check if the URL follows the HTTP(S) format
+    return res.json({ error: 'invalid url' });
   }
-
   try {
-    let findOne = await UrlModel.findOne({original_url: url});
-    if(findOne) {
-      res.json({original_url: findOne.original_url, short_url: findOne.short_url});
+    let findOne = await Url.findOne({ original_url: url });
+    if (findOne) {
+      res.json({ original_url: findOne.original_url, short_url: findOne.short_url });
     } else {
-      findOne = new UrlModel({original_url: url, short_url: urlCode}); 
+      findOne = new Url({ original_url: url, short_url: urlCode });
       await findOne.save();
-      res.json({original_url: url, short_url: urlCode});
+      res.json({ original_url: url, short_url: urlCode });
     }
   } catch (err) {
     console.error(err);
-    res.status(500).json('Server error');
+    res.json({ error: 'Server error' });
   }
 });
-
-app.get('/api/shorturl/:short_url', async(req, res) => {
+app.get('/api/shorturl/:short_url', async (req, res) => {
   try {
-    const urlParams = await UrlModel.findOne({short_url: req.params.short_url});
-    if (urlParams) {
-      return res.redirect(urlParams.original_url);
+    const { short_url } = req.params;
+    const url = await Url.findOne({ short_url: short_url });
+    if (url) {
+      return res.redirect(url.original_url);
     } else {
-      return res.status(404).json('No URL found');
+      return res.status(404).json({ error: 'No short URL found' });
     }
   } catch (err) {
     console.error(err);
-    res.status(500).json('Server error');
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
